@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+outputs/
+*.pth
+*.pt
+*.log
+.venv/
+.DS_Store
+
+# Historical manuscript checkpoints intentionally versioned for reproducibility.
+!checkpoints/
+!checkpoints/historical_table_ours/
+!checkpoints/historical_table_ours/**/*.pth
