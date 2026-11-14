@@ -24,11 +24,9 @@ import torch
 from agents import RainbowDQN
 from environment import GridWorld
 from generate_test_environments import MAP_NODES, apply_environment_config, generate_environment_config
-from global_planner import arrival_budget, extract_key_points, grid_astar_path, segment_is_safe, voronoi_astar_path
+from global_planner import arrival_budget, planned_grid_route
 from train import set_global_seed
 from navigation_protocol import CODE_PROTOCOL
-from global_planner import planned_grid_route
-from experiments.keypoint_density import density_route
 
 LEVELS = {1: (50, 0, 'point'), 2: (50, 30, 'point'),
           3: (50, 30, 'block'), 4: (50, 50, 'block')}
@@ -46,8 +44,6 @@ def load_levels(path=None):
 CONTROLLERS = ('fixed_waypoints', 'full', 'no_keypoint', 'direct_goal',
                'no_event', 'fixed_period', 'euclidean_trigger',
                'fixed_waypoints_event')
-ACTIONS = np.array([(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1),
-                    (-1, 1), (1, -1), (1, 1), (0, 0)])
 
 
 def atomic_json(path, data):
@@ -73,9 +69,8 @@ def reset_policy(agent):
 
 
 def planned_route(grid, start, goal, compress, max_segment=None, **geometry):
-    # max_segment=None delegates to the released compression.
-    return density_route(grid, start, goal, compress=compress,
-                         max_segment=max_segment, **geometry)
+    return planned_grid_route(grid, start, goal, compress=compress,
+                              max_segment=max_segment, **geometry)
 
 
 def set_route(env, route):
@@ -139,15 +134,19 @@ def evaluate_scenario(env, cfg, agent, max_steps=2000, controller='fixed_waypoin
     replan_count = 0; planning_seconds = 0.0; fallback_count = 0
     initial_points = len(env.goal_list)
     termination = 'timeout'; success = False
-    active_goal = tuple(env.goal); goal_age = 0
-    budget = arrival_budget(env.agent_pos, active_goal)
+    goal_age = 0
     pending_recoveries = []
     recoveries = []
-    max_replans = max_steps  # At most one replan per control step; no extra paper-undefined cap.
     steps = 0
     deadlock_events = 0
     deadlock = None
     deadlock_recovery_steps = []
+
+    def subgoal_budget():
+        if controller == 'euclidean_trigger':
+            distance = np.linalg.norm(np.asarray(env.agent_pos) - env.goal)
+            return int(np.ceil(distance / np.sqrt(2))) + 5
+        return arrival_budget(env.agent_pos, env.goal)
 
     def plan_now(initial=False):
         nonlocal planning_seconds, fallback_count, replan_count, state
@@ -177,48 +176,23 @@ def evaluate_scenario(env, cfg, agent, max_steps=2000, controller='fixed_waypoin
         events.append({'step': steps, 'initial': initial, 'seconds': elapsed,
                        'route_points': len(route), 'accepted': accepted, **meta})
         if accepted:
-            # Replace only the goal features in the most recent observation;
-            # do not add an extra obstacle-history observation at this timestep.
-            state = np.array(state, copy=True)
-            delta = np.asarray(env.goal) - np.asarray(env.agent_pos)
-            state[-1, :2] = [np.linalg.norm(delta), np.arctan2(delta[1], delta[0])]
+            state = env.get_state()
         return accepted
 
     if controller == 'direct_goal':
         set_route(env, [final_goal])
-        delta = np.asarray(env.goal) - np.asarray(env.agent_pos)
-        state[-1, :2] = [np.linalg.norm(delta), np.arctan2(delta[1], delta[0])]
+        state = env.get_state()
         initial_points = 1
     elif controller not in ('fixed_waypoints', 'fixed_waypoints_event'):
         if not plan_now(initial=True):
             termination = 'initial_planning_failure'
         initial_points = len(env.goal_list)
     active_goal = tuple(env.goal)
-    budget = arrival_budget(env.agent_pos, active_goal)
-    if controller == 'euclidean_trigger':
-        budget = int(np.ceil(np.linalg.norm(np.asarray(env.agent_pos)-active_goal) / np.sqrt(2))) + 5
+    budget = subgoal_budget()
 
     if termination != 'initial_planning_failure':
         for step in range(max_steps):
             cycle_start = time.perf_counter()
-            trigger = False
-            if controller == 'fixed_period':
-                trigger = step > 0 and step % fixed_period == 0
-            elif controller in ('full', 'no_keypoint', 'euclidean_trigger',
-                                'fixed_waypoints_event'):
-                trigger = goal_age >= budget
-            if trigger:
-                if replan_count >= max_replans:
-                    cycles.append(time.perf_counter() - cycle_start)
-                    termination = 'replan_limit'; break
-                if not plan_now():
-                    cycles.append(time.perf_counter() - cycle_start)
-                    termination = 'online_planning_failure'; break
-                pending_recoveries.append((step, tuple(env.goal)))
-                goal_age = 0; active_goal = tuple(env.goal)
-                budget = arrival_budget(env.agent_pos, active_goal)
-                if controller == 'euclidean_trigger':
-                    budget = int(np.ceil(np.linalg.norm(np.asarray(env.agent_pos)-active_goal) / np.sqrt(2))) + 5
             policy_state = perturbed_state(state, rng, perturbation,
                                            localization_sigma=localization_sigma)
             t0 = time.perf_counter()
@@ -230,23 +204,38 @@ def evaluate_scenario(env, cfg, agent, max_steps=2000, controller='fixed_waypoin
                 pending.append(action); action = pending.popleft()
             if perturbation == 'axis_only' and action in (4, 5, 6, 7):
                 action = (0, 0, 1, 1)[action - 4]
-            current = tuple(env.agent_pos)
-            attempted = tuple(np.asarray(current) + ACTIONS[action])
-            collision = any(current == tuple(o['position']) for o in env.dynamic_obstacles)
-            collision |= not (0 <= attempted[0] < env.rows and 0 <= attempted[1] < env.cols)
-            if not collision:
-                collision = bool(env.grid_map[attempted] != 0)
             # Obstacle stochasticity is keyed by scenario and control step,
             # independent of training seed, policy RNG, and prior episodes.
             random.seed(int(cfg['seed']) * 1000003 + step)
             state, _, done = env.step(action)
             steps = step + 1
             path.append(tuple(env.agent_pos))
-            goal_history.append(tuple(env.goal))
-            collision |= bool(env.last_info.get('collision'))
-            cycles.append(time.perf_counter() - cycle_start)
-            if collision:
+            if env.last_info.get('collision'):
+                goal_history.append(tuple(env.goal))
+                cycles.append(time.perf_counter() - cycle_start)
                 termination = 'collision'; break
+            if tuple(env.goal) != active_goal:
+                active_goal = tuple(env.goal)
+                goal_age = 0
+                budget = subgoal_budget()
+            else:
+                goal_age += 1
+            if controller == 'fixed_period':
+                trigger = steps % fixed_period == 0
+            else:
+                trigger = (controller in ('full', 'no_keypoint', 'euclidean_trigger',
+                                          'fixed_waypoints_event') and goal_age >= budget)
+            if trigger and not done and steps < max_steps:
+                if not plan_now():
+                    goal_history.append(tuple(env.goal))
+                    cycles.append(time.perf_counter() - cycle_start)
+                    termination = 'online_planning_failure'; break
+                pending_recoveries.append((steps, tuple(env.goal)))
+                active_goal = tuple(env.goal)
+                goal_age = 0
+                budget = subgoal_budget()
+            goal_history.append(tuple(env.goal))
+            cycles.append(time.perf_counter() - cycle_start)
             if deadlock is not None:
                 since, anchor, stuck_goal, stuck_distance = deadlock
                 remaining = np.linalg.norm(np.asarray(stuck_goal) - np.asarray(env.agent_pos))
@@ -260,11 +249,6 @@ def evaluate_scenario(env, cfg, agent, max_steps=2000, controller='fixed_waypoin
                             float(np.linalg.norm(np.asarray(env.goal) - np.asarray(env.agent_pos))))
             if env.last_info.get('success') and np.linalg.norm(np.asarray(env.agent_pos)-final_goal) <= env.subgoal_tolerance:
                 success = True; termination = 'success'; break
-            if tuple(env.goal) != active_goal:
-                active_goal = tuple(env.goal); goal_age = 0
-                budget = arrival_budget(env.agent_pos, active_goal)
-                if controller == 'euclidean_trigger':
-                    budget = int(np.ceil(np.linalg.norm(np.asarray(env.agent_pos)-active_goal) / np.sqrt(2))) + 5
             else:
                 goal_age += 1
             unresolved = []
@@ -280,11 +264,10 @@ def evaluate_scenario(env, cfg, agent, max_steps=2000, controller='fixed_waypoin
     wall_seconds = time.perf_counter() - start_time
     moves = np.diff(np.asarray(path, dtype=float), axis=0)
     lengths = np.linalg.norm(moves, axis=1) if len(moves) else np.array([])
+    directions = moves[lengths > 0] / lengths[lengths > 0, None]
     angles = []
-    for a, b in zip(moves, moves[1:]):
-        norm = np.linalg.norm(a) * np.linalg.norm(b)
-        if norm:
-            angles.append(float(np.arccos(np.clip(np.dot(a, b) / norm, -1, 1))))
+    for a, b in zip(directions, directions[1:]):
+        angles.append(float(np.arccos(np.clip(np.dot(a, b), -1, 1))))
     return {'scenario_seed': int(cfg['seed']), 'success': success, 'termination': termination,
             'steps': steps, 'path_length_cells': float(lengths.sum()),
             'smoothness': 1.0 - float(np.mean(angles) / np.pi) if angles else 1.0,
@@ -316,6 +299,9 @@ def summarize(rows):
     successes = [r for r in rows if r['success']]
     elapsed = sum(r['wall_time_s'] for r in rows)
     decisions = sum(r['decision_count'] for r in rows)
+    cycles = sum(r.get('cycle_count', r['decision_count']) for r in rows)
+    cycle_seconds = sum(r['cycle_seconds'] for r in rows)
+    replanning_seconds = sum(r['replanning_seconds'] for r in rows)
     deadlocks = sum(r['deadlock_events'] for r in rows)
     def mean(key, subset):
         return float(np.mean([r[key] for r in subset])) if subset else None
@@ -326,10 +312,12 @@ def summarize(rows):
             'mean_path_length_success': mean('path_length_cells', successes),
             'mean_smoothness_success': mean('smoothness', successes),
             'mean_wall_time_success_s': mean('wall_time_s', successes),
+            'mean_wall_time_all_s': mean('wall_time_s', rows),
             'total_episode_wall_time_s': elapsed,
             'task_throughput_per_wall_s': len(successes) / elapsed if elapsed else None,
             'decision_latency_ms': 1000 * sum(r['decision_seconds'] for r in rows) / decisions if decisions else None,
-            'cycle_latency_including_replans_ms': 1000 * sum(r['cycle_seconds'] for r in rows) / sum(r.get('cycle_count', r['decision_count']) for r in rows) if decisions else None,
+            'cycle_latency_excluding_replans_ms': 1000 * (cycle_seconds - replanning_seconds) / cycles if cycles else None,
+            'cycle_latency_including_replans_ms': 1000 * cycle_seconds / cycles if cycles else None,
             'mean_global_replans': mean('global_replans', rows),
             'mean_planning_seconds': mean('planning_seconds', rows),
             'deadlock_events': deadlocks,
@@ -402,6 +390,7 @@ def run(args):
                              block_size_range=(2, 5), max_steps=args.max_steps)
         record_file = out / ('level%d.jsonl' % level)
         protocol = {'code_protocol': CODE_PROTOCOL, 'checkpoint_code_protocol': agent.loaded_code_protocol,
+                    'checkpoint_replay_protocol': agent.loaded_replay_protocol,
                     'training_source_sha256': agent.training_source_sha256,
                     'environment_specification': agent.loaded_environment_specification,
                     'agent_kind': agent_kind, 'bezier_t': getattr(agent, 'bezier_t', None),

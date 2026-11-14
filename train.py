@@ -211,10 +211,9 @@ def train_agent(env, agent, episodes=1000, max_steps=2000, save_path="dqn_model.
                 env.num_dobs = level_spec.get('dobs', env.num_dobs)
                 if env.obstacle_mode == 'block':
                     env.block_size_range = level_spec.get('block_range', (2, 5))
-            if navigation_mode == 'direct_goal':
-                env.goal_list = [env.final_goal]
-            else:
-                env.goal_list = env._reset_goal_list.copy()
+            # Sample the same safe zones for all training arms. reset() selects
+            # the final goal or the intermediate route after sampling the scene.
+            env.goal_list = env._reset_goal_list.copy()
             env.goal = env.goal_list[0] if env.goal_list else env.final_goal
             env.reset_dynamic(seed=None)
             state = env.reset()
@@ -311,6 +310,14 @@ def train_agent(env, agent, episodes=1000, max_steps=2000, save_path="dqn_model.
         # The final checkpoint is the reproducible default.  A best-training-
         # reward checkpoint is optional and must never silently replace it.
         agent.save_model(save_path)
+        final_path = Path(save_path).resolve()
+        with final_path.open('rb') as handle:
+            final_sha256 = hashlib.sha256(handle.read()).hexdigest()
+        (Path(log_dir) / 'checkpoint_manifest.json').write_text(json.dumps(
+            [*checkpoint_records, dict(episode=episodes, path=str(final_path),
+                                       reason='final', sha256=final_sha256)],
+            indent=2,
+        ) + '\n')
         writer.close()
         episode_records.close()
 
@@ -364,6 +371,7 @@ def train_agent(env, agent, episodes=1000, max_steps=2000, save_path="dqn_model.
             "max_steps_per_episode": max_steps,
             "environment_steps": step_counter,
             "checkpoint": os.path.abspath(save_path),
+            "checkpoint_sha256": final_sha256,
             "checkpoint_selection": "final",
         }, f, indent=2)
 

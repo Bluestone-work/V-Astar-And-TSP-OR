@@ -113,25 +113,18 @@ def extract_key_points(
     cell_size: tuple[float, float] = (1.0, 1.0),
     extra_margin: float = 0.0,
     report: dict | None = None,
+    max_segment: float | None = None,
 ) -> list[tuple[float, float]]:
-    """Compress a path while guaranteeing forward progress unconditionally.
+    """Apply Algorithm 2 to a route with safe adjacent edges.
 
-    The predicate decides how many nodes a key point may skip, never whether
-    the scan advances.  Skipping nothing is not a compression, so the adjacent
-    node is taken whatever the predicate says about it: the reference index
-    grows by at least one per scan and the procedure terminates after at most
-    ``len(path) - 1`` scans.
-
-    Every emitted segment that skips at least one node has passed the
-    predicate.  A segment that skips nothing is an edge of ``path`` and
-    inherits that path's validity; ``voronoi_astar_path`` admits an edge only
-    under this same predicate, so for a path from that planner no such edge is
-    unsafe.  If one is, because the path came from elsewhere or the map changed
-    after planning, it is counted in ``report['inherited_unsafe_edges']`` for
-    the caller to act on and the sequence is still returned complete.
+    The caller validates the route before compression. If the adjacent
+    candidate fails during the scan, report failure instead of emitting it.
+    The optional density cap limits shortcuts while retaining safe input edges.
     """
 
     points = [tuple(map(float, p)) for p in path]
+    if max_segment is not None and not (np.isfinite(max_segment) and max_segment > 0):
+        raise ValueError('max_segment must be a positive finite number')
     status = report if report is not None else {}
     status.update(scans=0, forced_advances=0, inherited_unsafe_edges=0)
     if not points:
@@ -147,19 +140,18 @@ def extract_key_points(
         status['scans'] += 1
         last_safe = anchor
         for candidate in range(anchor + 1, last + 1):
+            if max_segment is not None and candidate > anchor + 1:
+                before, after = points[anchor], points[candidate]
+                if hypot(after[0] - before[0], after[1] - before[1]) > max_segment:
+                    break
             if segment_is_safe(occupancy, points[anchor], points[candidate], **geometry):
                 last_safe = candidate
                 continue
             break
 
         if last_safe == anchor:
-            # The adjacent edge itself failed.  Advance over it rather than
-            # stall: it is an edge of the input path, so keeping it emits the
-            # geometry the input already prescribes, and refusing to move
-            # would retest the same pair from the same anchor forever.
-            status['forced_advances'] += 1
             status['inherited_unsafe_edges'] += 1
-            last_safe = anchor + 1
+            return []
         anchor = last_safe
         key_points.append(points[anchor])
 
@@ -433,15 +425,14 @@ def plan_key_points(occupancy: np.ndarray, start, goal, **kwargs):
     return key_points, metadata
 
 
-def planned_grid_route(grid, start, goal, compress=True, **geometry):
+def planned_grid_route(grid, start, goal, compress=True, *, max_segment=None, **geometry):
     """Round Voronoi points for grid control and validate every resulting edge.
 
     Every fallback uses the same footprint and cell geometry. A failed
     adjacent edge never bypasses the clearance test in the no-keypoint arm.
     """
     start, goal = tuple(start), tuple(goal)
-    if any(not (0 <= p[0] < grid.shape[0] and 0 <= p[1] < grid.shape[1])
-           or grid[p] != 0 for p in (start, goal)):
+    if any(not segment_is_safe(grid, point, point, **geometry) for point in (start, goal)):
         return [], {'planner': 'invalid_endpoint', 'fallback': False}
     raw, meta = voronoi_astar_path(grid, start, goal, **geometry)
     route = []
@@ -461,9 +452,12 @@ def planned_grid_route(grid, start, goal, compress=True, **geometry):
     raw_count = len(route)
     compression: dict = {}
     if compress:
-        route = extract_key_points(route, grid, report=compression, **geometry)
+        route = extract_key_points(route, grid, report=compression, max_segment=max_segment,
+                                   **geometry)
     if not valid(route):
         return [], dict(meta, route_valid=False)
-    return [tuple(map(int, p)) for p in route], dict(meta, route_valid=True,
-                                                   raw_points=raw_count, key_points=len(route),
-                                                   compression=compression)
+    result = dict(meta, route_valid=True, raw_points=raw_count, key_points=len(route),
+                  compression=compression)
+    if max_segment is not None:
+        result['keypoint_max_segment'] = float(max_segment)
+    return [tuple(map(int, p)) for p in route], result
