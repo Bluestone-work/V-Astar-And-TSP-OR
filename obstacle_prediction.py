@@ -27,7 +27,8 @@ def landing_candidates(history, occupancy, mode='history_voting'):
         from collections import Counter
         recent = list(dict.fromkeys(tuple(p) for p in reversed(positions)))
         counts = Counter(tuple(p) for p in positions)
-        return sorted((p for p in recent if grid[p] == 0), key=counts.get, reverse=True)
+        valid = (p for p in recent if grid[p] == 0)
+        return [max(valid, key=counts.get, default=tuple(current))]
     if mode != 'history_voting':
         raise ValueError('unknown prediction mode: ' + str(mode))
     directions = []

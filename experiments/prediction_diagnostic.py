@@ -7,6 +7,9 @@ def forecast_top1(history, occupancy, mode='history_voting', horizon=3):
     if not history or horizon < 1:
         raise ValueError('A nonempty observed history and positive horizon are required')
     window = [tuple(p) for p in history][-4:]
+    if mode == 'occupancy_aggregation':
+        position = landing_candidates(window, occupancy, mode=mode)[0]
+        return np.repeat(np.asarray([position]), horizon, axis=0)
     result = []
     for _ in range(horizon):
         candidates = landing_candidates(window, occupancy, mode=mode)

@@ -50,7 +50,9 @@ class GridWorld:
             raw_goal_list = raw_goal_list[1:]
         self.goal_list = [tuple(p) for p in raw_goal_list]
         self._reset_goal_list = self.goal_list.copy()
-        self.final_goal = tuple(raw_goal_list[-1]) if raw_goal_list else tuple(goal)
+        self.final_goal = tuple(raw_goal_list[-1]) if raw_goal_list else (
+            tuple(goal) if goal is not None else None
+        )
         self.robot_radius = float(robot_radius)
         self.cell_size = tuple(map(float, cell_size))
         self.extra_margin = float(extra_margin)
@@ -369,6 +371,8 @@ class GridWorld:
         self.current_goal_index = 0
         if self.goal_list and len(self.goal_list) > 0:
             self.goal = self.goal_list[self.current_goal_index]
+        elif self.final_goal is not None:
+            self.goal = self.final_goal
         elif self.goal is None:
             raise ValueError("Target point not set, please provide the goal parameter or goal_list during initialization")
         if hasattr(self, 'dynamic_obstacles') and len(self.dynamic_obstacles) > 0:
@@ -570,7 +574,9 @@ class GridWorld:
         old_pos = tuple(self.agent_pos)
         target = tuple(self.goal)
         previous_distance = float(np.linalg.norm(np.asarray(target) - old_pos))
-        predictions = list(getattr(self, 'predicted_landing_points', []))
+        r, c = self._pose_cell(old_pos)
+        predictions = [point for point in self.predicted_landing_points
+                       if max(abs(point[0] - r), abs(point[1] - c)) <= 3]
         delta = np.asarray(self.action_set[action])
         next_pos = self._advance(old_pos, delta)
         next_cell = self._pose_cell(next_pos)
