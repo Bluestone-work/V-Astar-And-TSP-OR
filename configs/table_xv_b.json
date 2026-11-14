@@ -1,0 +1,74 @@
+{
+  "table": "XV(b)",
+  "script": "revision_experiments/continuous_transfer/tracking_loop.py",
+  "interface": "event",
+  "map_file": "grid_map2.txt",
+  "levels_config": "configs/levels.json",
+  "level": 2,
+  "scenarios_per_seed": 300,
+  "evaluation_seed": 10000,
+  "training_seeds": [0, 1, 2],
+  "checkpoint_pattern": "checkpoints/maze_a/seed{seed}/final.pth",
+  "robot_model": "holonomic_disc",
+  "robot_radius_cell": 0.5,
+  "max_linear_speed_cell_s": 1.0,
+  "max_linear_acceleration_cell_s2": 1.0,
+  "integration_dt_s": 0.02,
+  "action_tolerance_cell": 0.10,
+  "localization_noise": {
+    "model": "first_order_gauss_markov",
+    "stationary_sigma_cell_per_coordinate": 0.25,
+    "correlation_time_s": 1.0
+  },
+  "groups": {
+    "C1": {
+      "localization_sigma": 0.0,
+      "sensing_flip_probability": 0.0,
+      "action_delay": 0,
+      "obstacle_speed_cell_s": 0.50,
+      "path_check": true
+    },
+    "C1-nc": {
+      "localization_sigma": 0.0,
+      "sensing_flip_probability": 0.0,
+      "action_delay": 0,
+      "obstacle_speed_cell_s": 0.50,
+      "path_check": false
+    },
+    "C1-m": {
+      "localization_sigma": 0.0,
+      "sensing_flip_probability": 0.0,
+      "action_delay": 0,
+      "obstacle_speed_cell_s": 0.787,
+      "path_check": true
+    },
+    "C1-ncm": {
+      "localization_sigma": 0.0,
+      "sensing_flip_probability": 0.0,
+      "action_delay": 0,
+      "obstacle_speed_cell_s": 0.787,
+      "path_check": false
+    },
+    "C2": {
+      "localization_sigma": 0.25,
+      "sensing_flip_probability": 0.0,
+      "action_delay": 0,
+      "obstacle_speed_cell_s": 0.50,
+      "path_check": true
+    },
+    "C3": {
+      "localization_sigma": 0.0,
+      "sensing_flip_probability": 0.02,
+      "action_delay": 0,
+      "obstacle_speed_cell_s": 0.50,
+      "path_check": true
+    },
+    "C4": {
+      "localization_sigma": 0.0,
+      "sensing_flip_probability": 0.0,
+      "action_delay": 1,
+      "obstacle_speed_cell_s": 0.50,
+      "path_check": true
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "epsilon_reset_strategy": "partial",
+  "mixed_sampling": "uniform_independent_rng",
+  "stages": [
+    {
+      "episodes": 1000,
+      "mode": "mixed",
+      "levels": [
+        {
+          "level": 1,
+          "obs": 50,
+          "dobs": 0,
+          "mode": "point"
+        },
+        {
+          "level": 2,
+          "obs": 50,
+          "dobs": 30,
+          "mode": "point"
+        },
+        {
+          "level": 3,
+          "obs": 50,
+          "dobs": 30,
+          "mode": "block",
+          "block_range": [
+            2,
+            5
+          ]
+        },
+        {
+          "level": 4,
+          "obs": 50,
+          "dobs": 50,
+          "mode": "block",
+          "block_range": [
+            2,
+            5
+          ]
+        }
+      ],
+      "epsilon_boost": 0.0,
+      "description": "Balanced L1-L4, with 50 dynamic obstacles at Level 4"
+    }
+  ]
+}

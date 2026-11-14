@@ -1,0 +1,78 @@
+{
+  "map_files": [
+    "grid_map.txt",
+    "grid_map2.txt",
+    "grid_map3.txt",
+    "grid_map4.txt"
+  ],
+  "training_seeds": [
+    0,
+    1,
+    2
+  ],
+  "training_episodes": 1000,
+  "max_steps_per_episode": 2000,
+  "evaluation_scenarios_per_configuration": 300,
+  "replay": {
+    "protocol": "eq19-single-buffer-v3",
+    "reward_weight": 0.25,
+    "td_error_weight": 0.75,
+    "priority_floor": 0.00001,
+    "sampling_with_replacement": true,
+    "importance_sampling": false
+  },
+  "arrival_budget": {
+    "distance": "ceil_euclidean_distance_over_one_cell_per_control_step",
+    "base_slack": 5,
+    "uncertainty_steps": 0
+  },
+  "safety": {
+    "robot_radius_physical_units": 0.5,
+    "cell_size": [
+      1,
+      1
+    ],
+    "extra_margin_physical_units": 0
+  },
+  "statistics": {
+    "seed_level_summary": "mean_and_standard_deviation",
+    "confidence_level": 0.95,
+    "checkpoint_selection": "fixed_final_episode_budget"
+  },
+  "code_protocol": "jas",
+  "training_environment": {
+    "static_obstacles": 50,
+    "dynamic_obstacles": 30,
+    "obstacle_mode": "point",
+    "curriculum": true,
+    "navigation_mode": "event"
+  },
+  "optimizer": {
+    "gamma": 0.99,
+    "epsilon": 1,
+    "epsilon_min": 0.01,
+    "epsilon_decay": 0.995,
+    "learning_rate": 0.001,
+    "batch_size": 64,
+    "memory_size": 200000
+  },
+  "epsilon_decay_unit": "environment_step",
+  "target_network": {
+    "tau": 0.01,
+    "optimizer_interval": 1
+  },
+  "standard_per": {
+    "alpha": 0.6,
+    "beta_initial": 0.4,
+    "beta_anneal_optimizer_steps": 200000,
+    "importance_sampling": true
+  },
+  "subgoal_tolerance_cells": 1,
+  "curriculum_file": "configs/curriculum_mazea_1000.json",
+  "learner": {
+    "reward_scale": 1,
+    "reward_scaling_applications": 1,
+    "double_q": true,
+    "huber": true
+  }
+}
