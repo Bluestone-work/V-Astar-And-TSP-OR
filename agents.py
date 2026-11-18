@@ -17,6 +17,9 @@ from models import (DuelingDQN_with_LSTM, DuelingDQN_with_uniLSTM,
                     PlainDQN_with_LSTM, PlainDQN_with_BiLSTM, PlainDQN)
 from manuscript_replay import ManuscriptReplay, StandardPER, UniformReplay
 
+BOOTSTRAP_POWER = 4  # Algorithm 3 uses one immediate reward and a four-power discount.
+
+
 class RainbowDQN:
     def __init__(self, env, gamma=0.99, epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995,
                 learning_rate=0.001, batch_size=64, memory_size=200000, device=None, alpha=0.6, beta=0.4,
@@ -166,7 +169,7 @@ class RainbowDQN:
             else:
                 # Optional target-network-maximum ablation.
                 bootstrap = self.target_network(next_states).max(1).values
-            target = rewards + self.gamma * (1. - dones) * bootstrap
+            target = rewards + self.gamma ** BOOTSTRAP_POWER * (1. - dones) * bootstrap
         current=self.q_network(states).gather(1,actions[:,None]).flatten()
         td_error=target-current
         if self.huber:
@@ -246,7 +249,7 @@ class RainbowDQN:
     def learner_specification(self):
         return dict(reward_scale=self.reward_scale, reward_scaling_applications=1,
                     double_q=self.double_q, huber=self.huber,
-                    gamma=self.gamma,
+                    gamma=self.gamma, bootstrap_power=BOOTSTRAP_POWER,
                     replay_mode=self.replay_mode, importance_sampling=self.importance_sampling,
                     alpha=self.alpha, beta=self.beta, per_beta_steps=self.per_beta_steps,
                     batch_size=self.batch_size, architecture=self.architecture)

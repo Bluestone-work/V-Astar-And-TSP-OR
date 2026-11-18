@@ -72,6 +72,7 @@
   "learner": {
     "reward_scale": 1,
     "reward_scaling_applications": 1,
+    "bootstrap_power": 4,
     "double_q": true,
     "huber": true
   }

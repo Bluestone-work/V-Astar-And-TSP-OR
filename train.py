@@ -9,7 +9,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from environment import GridWorld
-from agents import RainbowDQN
+from agents import BOOTSTRAP_POWER, RainbowDQN
 from models import DuelingDQN_with_LSTM
 from navigation_protocol import CODE_PROTOCOL
 import hashlib
@@ -402,9 +402,8 @@ if __name__ == "__main__":
     learner = config['learner']
     if learner.get('reward_scaling_applications') != 1:
         raise ValueError('Only single reward scaling is supported')
-    if 'bootstrap_power' in learner:
-        del learner['bootstrap_power']
-        print('Legacy bootstrap_power ignored. Training uses optimizer.gamma once per decision.')
+    if learner.get('bootstrap_power', BOOTSTRAP_POWER) != BOOTSTRAP_POWER:
+        raise ValueError('Algorithm 3 requires learner.bootstrap_power = 4')
     replay = config['replay']
     from navigation_protocol import REPLAY_PROTOCOL
     if (replay['protocol'], replay['reward_weight'], replay['td_error_weight'],
