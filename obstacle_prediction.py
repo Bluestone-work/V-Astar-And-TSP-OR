@@ -22,12 +22,13 @@ def landing_candidates(history, occupancy, mode='history_voting'):
         return [point] if (0 <= point[0] < grid.shape[0] and 0 <= point[1] < grid.shape[1]
                            and grid[point] == 0) else [tuple(current)]
     if mode == 'occupancy_aggregation':
-        # Explicit new OA definition: historical occupancy frequency, ties
-        # broken by recency. The submitted PDF does not specify OA's formula.
+        # Table VI: rank distinct feasible cells by frequency, then recency.
         from collections import Counter
         recent = list(dict.fromkeys(tuple(p) for p in reversed(positions)))
         counts = Counter(tuple(p) for p in positions)
-        return sorted((p for p in recent if grid[p] == 0), key=counts.get, reverse=True)
+        valid = [p for p in recent if 0 <= p[0] < grid.shape[0]
+                 and 0 <= p[1] < grid.shape[1] and grid[p] == 0]
+        return sorted(valid, key=counts.get, reverse=True)
     if mode != 'history_voting':
         raise ValueError('unknown prediction mode: ' + str(mode))
     directions = []

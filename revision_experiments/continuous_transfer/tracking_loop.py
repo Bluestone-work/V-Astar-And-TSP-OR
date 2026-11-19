@@ -1,10 +1,10 @@
-"""Continuous closed loop with a low-level tracking controller (groups C0-C5).
+"""Continuous closed loop with a low-level tracking controller for Table XI(b).
 
 The DRL policy and its weights are unchanged. What changes is how one of its
 nine discrete actions is executed.
 
 Grid execution (G0):      policy -> action -> cell update (x+1, y+1)
-Event execution (C1-C5):  policy -> action -> target point -> holonomic tracking
+Event execution (Table XI(b)):  policy -> action -> target point -> holonomic tracking
                           -> planar velocity vector every 0.02 s -> pose -> feedback
 
 1. The policy outputs one of nine actions.
@@ -30,7 +30,7 @@ The execution layer is a **simplified holonomic mobile robot model with
 bounded translational velocity and acceleration**, not a model of real robot
 dynamics. Its scope:
 
-  * circular footprint of radius 0.2 cell;
+  * circular footprint of radius 0.50 cell for Table XI(b);
   * translational speed bounded by 1.0 cell/s, acceleration by 1.0 cell/s^2,
     both enforced on the velocity vector at every substep;
   * continuous pose integrated and solid-body collision checked every 0.02 s;
@@ -59,7 +59,10 @@ to the action interface alone.
 from __future__ import annotations
 
 from collections import deque
+from contextlib import contextmanager
+import json
 import math
+from pathlib import Path
 
 import numpy as np
 
@@ -308,6 +311,7 @@ def run_episode(env, cfg, agent, args, trace=None):
 
     wall_start = time.perf_counter()
     apply_environment_config(env, cfg)
+    env.ensure_motion_stream(int(cfg['seed']))
     env.navigation_mode = 'event'
     for key, value in getattr(agent, 'loaded_environment_specification', {}).items():
         if key in ('prediction_mode', 'prediction_enabled', 'avoidance_reward_form',
@@ -356,17 +360,24 @@ def run_episode(env, cfg, agent, args, trace=None):
     def measured_cell(point):
         return tuple(int(v) for v in np.clip(np.rint(point), [0, 0], [rows - 1, cols - 1]))
 
+    @contextmanager
+    def observed_map():
+        lattice = [tuple(o['position']) for o in env.dynamic_obstacles]
+        for obstacle, seen in zip(env.dynamic_obstacles, clock.observed_cells()):
+            obstacle['position'] = seen
+        try:
+            env.rebuild_grid_map()
+            yield
+        finally:
+            for obstacle, head in zip(env.dynamic_obstacles, lattice):
+                obstacle['position'] = head
+
     def observe(point):
         cell = measured_cell(point)
         env.agent_pos = cell
         env.steps = decisions
-        lattice = [tuple(o['position']) for o in env.dynamic_obstacles]
-        for obstacle, seen in zip(env.dynamic_obstacles, clock.observed_cells()):
-            obstacle['position'] = seen
-        env.rebuild_grid_map()
-        state = np.array(env.get_state(), dtype=np.float32, copy=True)
-        for obstacle, head in zip(env.dynamic_obstacles, lattice):
-            obstacle['position'] = head
+        with observed_map():
+            state = env.get_state()
         offset = np.asarray(env.goal, dtype=float) - point
         state[-1, :2] = [np.linalg.norm(offset), np.arctan2(offset[1], offset[0])]
         if args.sensing_flip_probability > 0:
@@ -474,7 +485,9 @@ def run_episode(env, cfg, agent, args, trace=None):
         else:
             goal_age += 1
             if goal_age >= budget:
-                if not env._plan_route():
+                with observed_map():
+                    planned = env._plan_route()
+                if not planned:
                     termination = 'planning_failure'; break
                 goal_age = 0
                 budget = arrival_budget(estimate, env.goal)
@@ -504,6 +517,7 @@ def summarize(rows):
         values = [r[key] for r in rows if r.get(key) is not None]
         return float(np.mean(values)) if values else None
     moves = pooled('moves_issued')
+    refused = pooled('moves_refused')
     return {'scenarios': n,
             'success_rate': count('success') / n,
             'collision_rate': count('collision_static', 'collision_dynamic') / n,
@@ -518,7 +532,8 @@ def summarize(rows):
             # number of actions rather than counting once each.
             'action_completion_rate': pooled('moves_completed') / moves if moves else None,
             'action_timeout_rate': pooled('moves_timed_out') / moves if moves else None,
-            'refused_per_episode': pooled('moves_refused') / n,
+            'refused_per_episode': refused / n,
+            'refusal_rate': refused / (moves + refused) if moves + refused else None,
             'mean_tracking_error': mean_of('mean_tracking_error'),
             'mean_arrival_error': mean_of('mean_arrival_error'),
             'navigation_time_s_success': mean_of('navigation_time_s'),
@@ -530,16 +545,20 @@ def summarize(rows):
 def build_parser():
     import argparse
     p = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    p.add_argument('--checkpoint', required=True)
+    p.add_argument('--checkpoint')
+    p.add_argument('--protocol', type=Path, default=Path('configs/table_xv_b.json'),
+                   help='Table XI(b) protocol used with --group.')
+    p.add_argument('--group', help='Table XI(b) condition, e.g. C1 or C2.')
+    p.add_argument('--training-seed', type=int, help='Select the checkpoint for a table group.')
     p.add_argument('--map-file', default='grid_map2.txt')
-    p.add_argument('--levels-config', required=True)
+    p.add_argument('--levels-config')
     p.add_argument('--level', type=int, default=2)
     p.add_argument('--scenarios', type=int, default=300)
     p.add_argument('--eval-seed', type=int, default=10000)
-    p.add_argument('--interface', choices=('fixed', 'event'), required=True,
+    p.add_argument('--interface', choices=('fixed', 'event'),
                    help="'fixed' is C0, the earlier interface: target one cell from the "
                         "measured pose, braking controller, next action after exactly one period. "
-                        "'event' is C1-C5: lattice target, regulated controller, footprint check, "
+                        "'event' is the Table XI(b) interface: lattice target, regulated controller, footprint check, "
                         'next action on arrival or on action timeout.')
     p.add_argument('--localization-sigma', type=float, default=0.)
     p.add_argument('--localization-tau', type=float, default=1.,
@@ -548,7 +567,7 @@ def build_parser():
     p.add_argument('--action-delay', type=int, default=0)
     p.add_argument('--obstacle-speed', type=float, default=.5)
     p.add_argument('--obstacle-lateral-acceleration', type=float, default=1.)
-    p.add_argument('--robot-radius', type=float, default=.2)
+    p.add_argument('--robot-radius', type=float)
     p.add_argument('--dt', type=float, default=.02)
     p.add_argument('--period', type=float, default=1.42,
                    help='Decision period of the fixed interface, s; sqrt(2)/v_max rounded up.')
@@ -567,9 +586,9 @@ def build_parser():
                    help='Refresh rate of the occupancy reading the controller uses, Hz.')
     p.add_argument('--max-decisions', type=int, default=2000,
                    help='The grid evaluator\'s cap, kept so the decision budget is unchanged.')
-    p.add_argument('--max-sim-time', type=float, default=2840.,
-                   help='Physical time cap, s, the same for every group: 2000 decisions at the '
-                        'fixed period of 1.42 s. Execution time cannot be traded for success.')
+    p.add_argument('--max-sim-time', type=float,
+                   help='Physical time cap, s. For event execution the default is the decision '
+                        'cap times the longest action window, rounded to integration steps.')
     p.add_argument('--no-regulation', action='store_true')
     p.add_argument('--no-path-check', action='store_true')
     p.add_argument('--replay-mode', choices=('manuscript', 'uniform', 'per'), default='manuscript')
@@ -580,28 +599,69 @@ def build_parser():
     return p
 
 
+def parse_args(argv=None):
+    parser = build_parser()
+    selected = parser.parse_args(argv)
+    if selected.group:
+        protocol = json.loads(selected.protocol.read_text())
+        if selected.group not in protocol['groups']:
+            parser.error('unknown Table XI(b) group: ' + selected.group)
+        if selected.training_seed not in protocol['training_seeds']:
+            parser.error('--group requires a training seed listed in the protocol')
+        group = protocol['groups'][selected.group]
+        parser.set_defaults(
+            checkpoint=protocol['checkpoint_pattern'].format(seed=selected.training_seed),
+            interface=protocol['interface'], map_file=protocol['map_file'],
+            levels_config=protocol['levels_config'], level=protocol['level'],
+            scenarios=protocol['scenarios_per_seed'], eval_seed=protocol['evaluation_seed'],
+            robot_radius=protocol['robot_radius_cell'], dt=protocol['integration_dt_s'],
+            max_linear_speed=protocol['max_linear_speed_cell_s'],
+            max_linear_acceleration=protocol['max_linear_acceleration_cell_s2'],
+            action_tolerance=protocol['action_tolerance_cell'],
+            action_timeout=protocol['action_timeout_s'], stay_duration=protocol['stay_duration_s'],
+            max_decisions=protocol['max_decisions'], max_sim_time=protocol['max_sim_time_s'],
+            localization_sigma=group['localization_sigma'],
+            localization_tau=protocol['localization_noise']['correlation_time_s'],
+            sensing_flip_probability=group['sensing_flip_probability'],
+            action_delay=group['action_delay'], obstacle_speed=group['obstacle_speed_cell_s'],
+            no_path_check=not group['path_check'],
+        )
+    elif selected.training_seed is not None:
+        parser.error('--training-seed requires --group')
+    args = parser.parse_args(argv)
+    if not (args.checkpoint and args.interface and args.levels_config):
+        parser.error('provide --group and --training-seed, or supply --checkpoint, --interface and --levels-config')
+    if args.robot_radius is None:
+        args.robot_radius = .50 if args.interface == 'event' else .20
+    if min(args.dt, args.max_linear_speed, args.max_linear_acceleration,
+           args.max_decisions, args.scenarios) <= 0:
+        parser.error('integration, motion and evaluation limits must be positive')
+    if args.action_timeout is None:
+        args.action_timeout = 2. * rest_to_rest_time(math.sqrt(2.), args.max_linear_speed,
+                                                     args.max_linear_acceleration)
+    if args.max_sim_time is None:
+        action_steps = (max(math.ceil(args.action_timeout / args.dt),
+                            round(args.stay_duration / args.dt))
+                        if args.interface == 'event' else round(args.period / args.dt))
+        args.max_sim_time = args.max_decisions * action_steps * args.dt
+    if args.interface == 'fixed' and args.period * args.max_linear_speed < math.sqrt(2.) - 1e-9:
+        parser.error('fixed period too short to complete a diagonal action')
+    args.protocol = str(args.protocol) if args.group else None
+    return args
+
+
 def main():
     import hashlib
-    import json
     import os
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     from experiments import proposed_evaluation as pe
     from generate_test_environments import MAP_NODES, generate_environment_config
     from revision_experiments.legacy_arm.synced_env import SyncedGridWorld
     from train import set_global_seed
 
-    parser = build_parser()
-    args = parser.parse_args()
-    if args.action_timeout is None:
-        args.action_timeout = 2. * rest_to_rest_time(math.sqrt(2.), args.max_linear_speed,
-                                                     args.max_linear_acceleration)
-    if args.period * args.max_linear_speed < math.sqrt(2.) - 1e-9:
-        parser.error('fixed period too short to complete a diagonal action')
+    args = parse_args()
     out = Path(args.output_dir)
-    if (out / 'results.json').exists():
-        parser.error('use a new output directory to preserve existing evidence')
+    if (out / 'results.json').exists() or (out / ('level%d.jsonl' % args.level)).exists():
+        raise FileExistsError('use a new output directory to preserve existing evidence: ' + str(out))
     out.mkdir(parents=True, exist_ok=True)
 
     set_global_seed(args.eval_seed)
@@ -618,7 +678,7 @@ def main():
                             obs=static, dobs=dynamic, obstacle_mode=mode,
                             block_size_range=(2, 5), max_steps=args.max_decisions)
     rows = []
-    with (out / ('level%d.jsonl' % args.level)).open('w', buffering=1) as handle:
+    with (out / ('level%d.jsonl' % args.level)).open('x', buffering=1) as handle:
         for index in range(args.scenarios):
             cfg = generate_environment_config(template, args.eval_seed + index)
             env = SyncedGridWorld(grid, start=nodes[0], goal=nodes[-1], goal_list=nodes,
@@ -635,6 +695,12 @@ def main():
                     flush=True)
     result = {'protocol': vars(args), 'checkpoint': str(checkpoint),
               'checkpoint_sha256': hashlib.sha256(checkpoint.read_bytes()).hexdigest(),
+              'protocol_sha256': (hashlib.sha256(Path(args.protocol).read_bytes()).hexdigest()
+                                  if args.protocol else None),
+              'checkpoint_code_protocol': agent.loaded_code_protocol,
+              'checkpoint_replay_protocol': agent.loaded_replay_protocol,
+              'checkpoint_training_seed': agent.loaded_training_seed,
+              'checkpoint_training_environment': agent.loaded_environment_specification,
               'collision_model': 'disc of radius r vs unit cell squares, static and dynamic, '
                                  'exact intersection at every %g s substep' % args.dt,
               'obstacle_clock': 'physical time; shared lattice path with the grid evaluator',

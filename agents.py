@@ -1,7 +1,7 @@
 """Released learner: single reward scaling, Double DQN and weighted Huber.
 
 Priority rule and importance sampling are separate experimental factors.
-See docs/METHOD.md for the exact released method and historical boundaries.
+See the README for the evaluation protocol and archived checkpoint provenance.
 """
 import inspect
 import hashlib
@@ -17,7 +17,7 @@ from models import (DuelingDQN_with_LSTM, DuelingDQN_with_uniLSTM,
                     PlainDQN_with_LSTM, PlainDQN_with_BiLSTM, PlainDQN)
 from manuscript_replay import ManuscriptReplay, StandardPER, UniformReplay
 
-BOOTSTRAP_POWER = 4  # Algorithm 3 uses one immediate reward and a four-power discount.
+BOOTSTRAP_POWER = 4
 
 
 class RainbowDQN:
@@ -160,12 +160,10 @@ class RainbowDQN:
         dones=torch.as_tensor(dones,dtype=torch.float32,device=self.device)
         with torch.no_grad():
             if self.double_q:
-                # Double DQN with min clipping: the online network picks the
-                # action, the target network values it, and the result is clipped
-                # against the target network's own maximum.
-                pick = self.q_network(next_states).max(1)[1].unsqueeze(1)
-                valued = self.target_network(next_states).gather(1, pick).squeeze(1)
-                bootstrap = torch.min(valued, self.target_network(next_states).max(1)[0])
+                # Algorithm 3: select with the online network and evaluate
+                # the same action with the target network.
+                action = self.q_network(next_states).argmax(dim=1, keepdim=True)
+                bootstrap = self.target_network(next_states).gather(1, action).squeeze(1)
             else:
                 # Optional target-network-maximum ablation.
                 bootstrap = self.target_network(next_states).max(1).values
@@ -279,6 +277,7 @@ class RainbowDQN:
                         'importance_sampling', 'alpha', 'beta', 'per_beta_steps'):
                 setattr(self, key, spec[key])
         self.loaded_environment_specification = checkpoint.get('environment_specification', {})
+        self.loaded_replay_protocol = checkpoint.get('replay_protocol')
         self.training_source_sha256 = checkpoint.get('training_source_sha256', {})
         if not allow_historical:
             root = Path(__file__).resolve().parent

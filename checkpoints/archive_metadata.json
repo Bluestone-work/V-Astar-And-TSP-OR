@@ -1,0 +1,122 @@
+{
+  "source": "Checkpoint payload metadata and SHA-256 of the existing public files",
+  "note": "Directory labels are not embedded training seeds. Null fields were absent. Source hashes identify source contents, without establishing a training commit or supplying the training logs.",
+  "shared_embedded_metadata": {
+    "training_seed": null,
+    "code_protocol": "jas0644-aligned-v2",
+    "replay_protocol": "submitted-eq18-eq19-one-step",
+    "gamma": 0.99,
+    "target_tau": 0.01,
+    "smoothing_factor": 0.5,
+    "architecture": "bilstm_dueling",
+    "environment_specification": {
+      "collision_protocol": "github-endpoint-only-v1",
+      "prediction_mode": "history_voting",
+      "prediction_enabled": true,
+      "avoidance_reward_form": "piecewise",
+      "reward_scales": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "subgoal_tolerance": 1.0,
+      "robot_radius": 0.0,
+      "cell_size": [
+        1.0,
+        1.0
+      ],
+      "extra_margin": 0.0
+    },
+    "learner_specification": null,
+    "training_configuration": null,
+    "training_source_sha256": {
+      "agents.py": "ac6961fc70ad4d39c40b451e4f86b0a10d7995cd2b32e1d807114b77e188c209",
+      "environment.py": "9d4965d46c69ba3b5a0b09d74abb0206eea3d96776b52839136afe89fc9a647e",
+      "models.py": "d179e70d318cd388daeaff42325be8c9e6ed893972772edfca1db3046d7ca64f",
+      "global_planner.py": "a2a9d85d52766ff023a3f531f38766bd06f19c91a14c6bbb3eb90371eb4ee84e",
+      "train.py": "83cfa31c512c02fb96f430123d8e900af8c276381402524a3ea65d42a9dd44eb",
+      "navigation_protocol.py": "473d285f5460ad4518b56dc007919ec147493e2089a501c7f34d2ceb2015441f",
+      "obstacle_prediction.py": "ded661fb8b32506ba37fdac04711d04274d82b6c7d949b5695caec3fa3b5a2f6",
+      "manuscript_replay.py": "59477e86eb184fd2c921373fdb40c6e8c4840fff5a9049a69c5fe422bb2e0b96"
+    }
+  },
+  "checkpoints": [
+    {
+      "path": "checkpoints/indoor/seed0/final.pth",
+      "sha256": "a12c384c3ba2ec0aec4119a4c95c13c8b8c8f742786546210615a92dced0df65",
+      "map": "indoor",
+      "directory_seed_label": 0,
+      "environment_steps": 143349
+    },
+    {
+      "path": "checkpoints/indoor/seed1/final.pth",
+      "sha256": "256beb9e964bd114843ae4e253606db9e00eecfb86c380dca4af559dd7a8d7c8",
+      "map": "indoor",
+      "directory_seed_label": 1,
+      "environment_steps": 173216
+    },
+    {
+      "path": "checkpoints/indoor/seed2/final.pth",
+      "sha256": "5304e1a0c28ecdcfedf7094a2b0388dda67342fd659fb6a16652d6441836aedc",
+      "map": "indoor",
+      "directory_seed_label": 2,
+      "environment_steps": 129740
+    },
+    {
+      "path": "checkpoints/maze_a/seed0/final.pth",
+      "sha256": "d5212efd8af9cf0c5b6b9d3dc5a722de437bdd297ac8ff1118b166015c81be2e",
+      "map": "maze_a",
+      "directory_seed_label": 0,
+      "environment_steps": 330488
+    },
+    {
+      "path": "checkpoints/maze_a/seed1/final.pth",
+      "sha256": "0ecdd9797a0f4a8f39e0a01d7668136d2ab7742abb4b05d5b7ce898e2bd68dbc",
+      "map": "maze_a",
+      "directory_seed_label": 1,
+      "environment_steps": 328231
+    },
+    {
+      "path": "checkpoints/maze_a/seed2/final.pth",
+      "sha256": "9c03c3fdec45ffa1d386650cee840589044168d61a5d6c6e94176dcc39712b10",
+      "map": "maze_a",
+      "directory_seed_label": 2,
+      "environment_steps": 305422
+    },
+    {
+      "path": "checkpoints/outdoor/seed0/final.pth",
+      "sha256": "8aa4b39578cf091493eb0d9e5d98d1044a699cb6747dda7caa04f03e12d41227",
+      "map": "outdoor",
+      "directory_seed_label": 0,
+      "environment_steps": 177823
+    },
+    {
+      "path": "checkpoints/outdoor/seed1/final.pth",
+      "sha256": "82a8fe29ad0c8d95543abc6ed6969b794dc989f2d2284889cec7dcc4a44c61b9",
+      "map": "outdoor",
+      "directory_seed_label": 1,
+      "environment_steps": 191622
+    },
+    {
+      "path": "checkpoints/outdoor/seed2/final.pth",
+      "sha256": "4344e89fc019a87c4feabb41578e5c729f371426bcc747c3b5bcf914eb44bf3c",
+      "map": "outdoor",
+      "directory_seed_label": 2,
+      "environment_steps": 186217
+    }
+  ],
+  "environment_steps_by_map": {
+    "indoor": {
+      "mean": 148768.33333333334,
+      "sample_sd": 22238.874169645667
+    },
+    "maze_a": {
+      "mean": 321380.3333333333,
+      "sample_sd": 13866.319422735556
+    },
+    "outdoor": {
+      "mean": 185220.66666666666,
+      "sample_sd": 6953.24459035732
+    }
+  }
+}

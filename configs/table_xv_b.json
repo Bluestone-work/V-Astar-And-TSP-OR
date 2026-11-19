@@ -1,5 +1,5 @@
 {
-  "table": "XV(b)",
+  "table": "XI(b)",
   "script": "revision_experiments/continuous_transfer/tracking_loop.py",
   "interface": "event",
   "map_file": "grid_map2.txt",
@@ -15,6 +15,10 @@
   "max_linear_acceleration_cell_s2": 1.0,
   "integration_dt_s": 0.02,
   "action_tolerance_cell": 0.10,
+  "action_timeout_s": 4.84,
+  "stay_duration_s": 1.0,
+  "max_decisions": 2000,
+  "max_sim_time_s": 9680.0,
   "localization_noise": {
     "model": "first_order_gauss_markov",
     "stationary_sigma_cell_per_coordinate": 0.25,
