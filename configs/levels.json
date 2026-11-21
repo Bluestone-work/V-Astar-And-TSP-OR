@@ -1,0 +1,22 @@
+{
+  "1": {
+    "obs": 50,
+    "dobs": 0,
+    "mode": "point"
+  },
+  "2": {
+    "obs": 50,
+    "dobs": 30,
+    "mode": "point"
+  },
+  "3": {
+    "obs": 50,
+    "dobs": 30,
+    "mode": "block"
+  },
+  "4": {
+    "obs": 50,
+    "dobs": 50,
+    "mode": "block"
+  }
+}
